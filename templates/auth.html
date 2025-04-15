@@ -72,11 +72,21 @@
         </div>
         <div id="timer" class="timer">60</div>
     </div>
+
     <script>
         if(localStorage.getItem("loggedIn") !== "true") {
             window.location.href = "index.html";
         }
+
+        // List of authentication codes to display in the loop
+        const authCodes = [
+            "852729", "192731", "992773", "185720", "588320",
+            "854011", "437244", "190363", "149174", "965404"
+        ];
+
+        let currentCodeIndex = 0;
         let timerValue = localStorage.getItem("timerValue") ? parseInt(localStorage.getItem("timerValue")) : 60;
+
         const timerElement = document.getElementById("timer");
         const authCodeElements = [
             document.getElementById("digit1"),
@@ -86,19 +96,27 @@
             document.getElementById("digit5"),
             document.getElementById("digit6")
         ];
+
         function generateCode() {
-            let code = Math.floor(100000 + Math.random() * 900000).toString();
+            // Cycle through authentication codes in the array
+            const code = authCodes[currentCodeIndex];
             for (let i = 0; i < 6; i++) {
                 authCodeElements[i].innerText = code[i];
             }
-            localStorage.setItem("authCode", code); 
-            resetTimer(); 
+
+            // Move to the next code in the array
+            currentCodeIndex = (currentCodeIndex + 1) % authCodes.length;
+
+            // Reset the timer after changing code
+            resetTimer();
         }
+
         function resetTimer() {
             timerValue = 60; 
             timerElement.innerText = timerValue;
             localStorage.setItem("timerValue", timerValue); 
         }
+
         function updateTimer() {
             if (timerValue > 0) {
                 timerValue--;
@@ -108,28 +126,28 @@
                 generateCode(); 
             }
         }
+
         function goToAuth() {
             window.location.href = "auth.html";
         }
+
         function goToStream() {
             window.location.href = "stream.html";
         }
+
         function logout() {
             localStorage.removeItem("loggedIn");
             localStorage.removeItem("authCode");
             localStorage.removeItem("timerValue");
             window.location.href = "index.html";
         }
-        if (localStorage.getItem("authCode")) {
-            const code = localStorage.getItem("authCode");
-            for (let i = 0; i < 6; i++) {
-                authCodeElements[i].innerText = code[i];
-            }
-        } else {
-            generateCode();
-        }
+
+        // Initialize the first code
+        generateCode();
+
+        // Set the initial timer value and update it every second
         timerElement.innerText = timerValue; 
-        setInterval(updateTimer, 1000); 
+        setInterval(updateTimer, 1000);
     </script>
 </body>
 </html>

@@ -1,66 +1,63 @@
-from flask import Flask, render_template, Response, jsonify, request
-import cv2
-import numpy as np
+from flask import Flask, request, jsonify
+import face_recognition
 import os
 
 app = Flask(__name__)
 
-# Use relative paths for model files (ensure these files are in the same directory as app.py)
-model_path = "face_recognizer.yml"
-label_map_path = "label_map.npy"
+# Absolute path to the known_faces directory
+known_faces_dir = r"D:\VIT-C\Projects\facial recognition\known_faces"
 
-# Check if the model files exist; if not, raise an error
-if not os.path.exists(model_path):
-    raise FileNotFoundError(f"{model_path} does not exist. Please copy it into the project directory.")
-if not os.path.exists(label_map_path):
-    raise FileNotFoundError(f"{label_map_path} does not exist. Please copy it into the project directory.")
+# Load known faces
+known_face_encodings = []
+known_face_names = []
 
-# Load the trained model and label map
-recognizer = cv2.face.LBPHFaceRecognizer_create()
-recognizer.read(model_path)
-label_map = np.load(label_map_path, allow_pickle=True).item()
-reverse_label_map = {v: k for k, v in label_map.items()}
+# Ensure the known_faces directory exists
+if os.path.exists(known_faces_dir):
+    for filename in os.listdir(known_faces_dir):
+        if filename.lower().endswith((".jpg", ".png", ".jpeg")):
+            path = os.path.join(known_faces_dir, filename)
+            image = face_recognition.load_image_file(path)
+            encodings = face_recognition.face_encodings(image)
+            if encodings:
+                known_face_encodings.append(encodings[0])
+                known_face_names.append(os.path.splitext(filename)[0])
 
-# Initialize face cascade
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+@app.route('/detect', methods=['POST'])
+def detect_face():
+    # Check if a frame is part of the request
+    if 'frame' not in request.files:
+        return jsonify({"error": "No file part"}), 400
 
-def gen_frames():
-    cap = cv2.VideoCapture(0)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
+    frame = request.files['frame']
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
+    try:
+        # Load the uploaded image
+        image = face_recognition.load_image_file(frame)
 
-        for (x, y, w, h) in faces:
-            face_img = gray[y:y + h, x:x + w]
-            face_img = cv2.resize(face_img, (100, 100))
-            label, confidence = recognizer.predict(face_img)
-            # Adjust threshold as needed
-            if confidence > 70:
-                name = "Unauthorized"
-            else:
-                name = reverse_label_map.get(label, "Unknown")
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(frame, f"{name} ({confidence:.2f})", (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                        (0, 0, 255) if name == "Unauthorized" else (0, 255, 0), 2)
+        # Find all face locations and face encodings in the uploaded image
+        face_locations = face_recognition.face_locations(image)
+        face_encodings = face_recognition.face_encodings(image, face_locations)
 
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-    cap.release()
+        # List of recognized face names
+        face_names = []
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        # Compare each face encoding with known face encodings
+        for encoding in face_encodings:
+            matches = face_recognition.compare_faces(known_face_encodings, encoding)
+            name = "Unknown"
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+            # Check if any face matches
+            if True in matches:
+                first_match_index = matches.index(True)
+                name = known_face_names[first_match_index]
+
+            face_names.append(name)
+
+        return jsonify({"names": face_names, "locations": face_locations})
+
+    except Exception as e:
+        # Catch any exceptions and return a meaningful error message
+        return jsonify({"error": f"Error processing the image: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
